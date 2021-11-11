@@ -1070,7 +1070,8 @@ fn fetch_options_from_proxy_url_and_callbacks<'a>(repo_url: &str, proxy_url: Opt
 /// as specified in the book
 ///
 /// Consult [#107](https://github.com/nabijaczleweli/cargo-update/issues/107) and
-/// the [Cargo Book](https://doc.rust-lang.org/cargo/reference/source-replacement.html) for details
+/// the Cargo Book for details: [`https://doc.rust-lang.org/cargo/reference/source-replacement.html`],
+/// [`https://doc.rust-lang.org/cargo/reference/registries.html`]
 pub fn get_index_url(crates_file: &Path, registry: &str) -> Result<(String, Cow<'static, str>), Cow<'static, str>> {
     let mut config_file = crates_file.with_file_name("config");
     let config = if let Ok(cfg) = fs::read_to_string(&config_file).or_else(|_| {
@@ -1100,24 +1101,45 @@ pub fn get_index_url(crates_file: &Path, registry: &str) -> Result<(String, Cow<
         cur_source = "crates-io".into();
     }
 
-    if let Some(source) = config.get("source") {
-        for (name, v) in source.as_table().ok_or(Cow::Borrowed("source not table"))? {
-            if let Some(replacement) = v.get("replace-with") {
-                replacements.insert(&name[..],
-                                    replacement.as_str().ok_or_else(|| format!("source.{}.replacement not string", name))?);
+    if let Some(toml::Value::Table(source)) = config.get("source") {
+        for (name, v) in source {
+            if let Some(toml::Value::String(replacement)) = v.get("replace-with") {
+                replacements.insert(&name[..], replacement);
             }
 
-            if let Some(url) = v.get("registry") {
-                let url = url.as_str().ok_or_else(|| format!("source.{}.registry not string", name))?.to_string().into();
-                if cur_source == url {
+            if let Some(toml::Value::String(url)) = v.get("registry") {
+                if cur_source == **url {
                     cur_source = name.into();
                 }
 
-                registries.insert(&name[..], url);
+                registries.insert(name, url.into());
             }
         }
     }
 
+    if let Some(toml::Value::Table(table)) = config.get("registries") {
+        table
+            .iter()
+            .filter(|(_, val)| matches!(val, toml::Value::Table(_)))
+            .map(|(name, val)| (name, val.as_table().and_then(|table| table.get("index"))))
+            .map(|(name, index)| {
+                (
+                    name,
+                    match index {
+                        Some(toml::Value::String(s)) => Some(s),
+                        _ => None,
+                    },
+                )
+            })
+            .filter(|(_, url)| url.is_some())
+            .map(|(name, url)| (name, url.unwrap()))
+            .for_each(|(name, url)| {
+                if cur_source == **url {
+                    cur_source = name.into()
+                }
+                registries.insert(name, url.into());
+            })
+    }
     if Url::parse(&cur_source).is_ok() {
         Err(format!("Non-crates.io registry specified and {} couldn't be found in the config file at {}. \
                      Due to a Cargo limitation we will not be able to install from there \

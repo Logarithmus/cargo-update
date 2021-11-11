@@ -12,12 +12,11 @@ use std::iter::FromIterator;
 use tabwriter::TabWriter;
 use lazysort::SortedBy;
 use std::fmt::Display;
-#[cfg(target_os="windows")]
+#[cfg(target_os = "windows")]
 use std::fs::File;
 use regex::Regex;
 use std::env;
 use std::fs;
-
 
 fn main() {
     let result = actual_main().err().unwrap_or(0);
@@ -32,14 +31,16 @@ fn actual_main() -> Result<(), i32> {
         for old_version in fs::read_dir(env::current_exe().unwrap().parent().unwrap().canonicalize().unwrap())
             .unwrap()
             .map(Result::unwrap)
-            .filter(|f| old_version_r.is_match(&f.file_name().into_string().unwrap())) {
+            .filter(|f| old_version_r.is_match(&f.file_name().into_string().unwrap()))
+        {
             fs::remove_file(old_version.path()).unwrap();
         }
     }
 
     let crates_file = cargo_update::ops::resolve_crates_file(opts.crates_file.1.clone());
     let http_proxy = cargo_update::ops::find_proxy(&crates_file);
-    let configuration = cargo_update::ops::PackageConfig::read(&crates_file.with_file_name(".install_config.toml")).map_err(|(e, r)| {
+    let configuration = cargo_update::ops::PackageConfig::read(&crates_file.with_file_name(".install_config.toml"))
+        .map_err(|(e, r)| {
             eprintln!("Reading config: {}", e);
             r
         })?;
@@ -52,12 +53,17 @@ fn actual_main() -> Result<(), i32> {
     };
 
     if !opts.filter.is_empty() {
-        packages.retain(|p| configuration.get(&p.name).map(|p_cfg| opts.filter.iter().all(|f| f.matches(p_cfg))).unwrap_or(false));
+        packages.retain(|p| {
+            configuration.get(&p.name).map(|p_cfg| opts.filter.iter().all(|f| f.matches(p_cfg))).unwrap_or(false)
+        });
     }
     match (opts.all, opts.to_update.is_empty()) {
         (true, true) => {}
         (true, false) => {
-            for pkg in cargo_update::ops::intersect_packages(&packages, &opts.to_update, opts.install, &installed_git_packages).into_iter() {
+            for pkg in
+                cargo_update::ops::intersect_packages(&packages, &opts.to_update, opts.install, &installed_git_packages)
+                    .into_iter()
+            {
                 if packages.iter().find(|p| p.name == pkg.name).is_none() {
                     packages.push(pkg);
                 }
@@ -69,30 +75,33 @@ fn actual_main() -> Result<(), i32> {
                         (please report to http://github.com/nabijaczleweli/cargo-update)")
             }
         }
-        (false, false) => packages = cargo_update::ops::intersect_packages(&packages, &opts.to_update, opts.install, &installed_git_packages),
+        (false, false) => {
+            packages =
+                cargo_update::ops::intersect_packages(&packages, &opts.to_update, opts.install, &installed_git_packages)
+        }
     }
 
     // These are all in the same order and (item => [package names]) maps
     let mut registry_urls = BTreeMap::<_, Vec<_>>::new();
     for package in &packages {
-        registry_urls.entry(cargo_update::ops::get_index_url(&crates_file, &package.registry).map_err(|e| {
-                    eprintln!("Couldn't get registry for {}: {}.", package.name, e);
-                    2
-                })?)
+        registry_urls
+            .entry(cargo_update::ops::get_index_url(&crates_file, &package.registry).map_err(|e| {
+                eprintln!("Couldn't get registry for {}: {}.", package.name, e);
+                2
+            })?)
             .or_default()
             .push(package.name.clone());
     }
     let registry_urls: Vec<_> = registry_urls.into_iter().collect();
 
-    let registries: Vec<_> = Result::from_iter(registry_urls.iter()
-        .map(|((registry_url, _), pkg_names)| {
-            cargo_update::ops::assert_index_path(&opts.cargo_dir.1, &registry_url[..])
-                .map(|path| (path, &pkg_names[..]))
-                .map_err(|e| {
-                    eprintln!("Couldn't get package repository: {}.", e);
-                    2
-                })
-        }))?;
+    let registries: Vec<_> = Result::from_iter(registry_urls.iter().map(|((registry_url, _), pkg_names)| {
+        cargo_update::ops::assert_index_path(&opts.cargo_dir.1, &registry_url[..])
+            .map(|path| (path, &pkg_names[..]))
+            .map_err(|e| {
+                eprintln!("Couldn't get package repository: {}.", e);
+                2
+            })
+    }))?;
     let mut registry_repos: Vec<_> = Result::from_iter(registries.iter().map(|(registry, _)| {
         Repository::open(&registry).or_else(|e| if e.code() == GitErrorCode::NotFound {
             Repository::init(&registry).map_err(|_| {
@@ -106,26 +115,29 @@ fn actual_main() -> Result<(), i32> {
         })
     }))?;
     for (i, mut registry_repo) in registry_repos.iter_mut().enumerate() {
-        cargo_update::ops::update_index(&mut registry_repo,
-                                        &(registry_urls[i].0).0,
-                                        http_proxy.as_ref().map(String::as_str),
-                                        cargo_config.net_git_fetch_with_cli,
-                                        &mut if !opts.quiet {
-                                            Box::new(stdout()) as Box<dyn Write>
-                                        } else {
-                                            Box::new(sink()) as Box<dyn Write>
-                                        }).map_err(|e| {
-                eprintln!("Failed to update index repository: {}.", e);
-                2
-            })?;
+        cargo_update::ops::update_index(
+            &mut registry_repo,
+            &(registry_urls[i].0).0,
+            http_proxy.as_ref().map(String::as_str),
+            cargo_config.net_git_fetch_with_cli,
+            &mut if !opts.quiet {
+                Box::new(stdout()) as Box<dyn Write>
+            } else {
+                Box::new(sink()) as Box<dyn Write>
+            },
+        )
+        .map_err(|e| {
+            eprintln!("Failed to update index repository: {}.", e);
+            2
+        })?;
     }
-    let latest_registries: Vec<_> = Result::from_iter(registry_repos.iter().zip(registries.iter()).map(|(registry_repo, (registry, _))| {
-        registry_repo.revparse_single("origin/master")
-            .map_err(|_| {
+    let latest_registries: Vec<_> =
+        Result::from_iter(registry_repos.iter().zip(registries.iter()).map(|(registry_repo, (registry, _))| {
+            registry_repo.revparse_single("origin/master").map_err(|_| {
                 eprintln!("Failed to read master branch of registry repository at {}.", registry.display());
                 2
             })
-    }))?;
+        }))?;
 
     for package in &mut packages {
         let registry_idx = match registries.iter().position(|(_, pkg_names)| pkg_names.contains(&package.name)) {
@@ -137,23 +149,31 @@ fn actual_main() -> Result<(), i32> {
         };
 
         let install_prereleases = configuration.get(&package.name).and_then(|c| c.install_prereleases);
-        package.pull_version(&latest_registries[registry_idx].as_commit().unwrap().tree().unwrap(),
-                             &registry_repos[registry_idx],
-                             install_prereleases);
+        package.pull_version(
+            &latest_registries[registry_idx].as_commit().unwrap().tree().unwrap(),
+            &registry_repos[registry_idx],
+            install_prereleases,
+        );
     }
 
     if !opts.quiet {
         let mut out = TabWriter::new(stdout());
         writeln!(out, "Package\tInstalled\tLatest\tNeeds update").unwrap();
-        for (package, package_target_version, package_install_prereleases) in
-            packages.iter()
-                .map(|p| {
-                    let cfg = configuration.get(&p.name);
-                    (p, cfg.as_ref().and_then(|c| c.target_version.as_ref()), cfg.as_ref().and_then(|c| c.install_prereleases))
-                })
-                .sorted_by(|&(ref lhs, lhstv, lhsip), &(ref rhs, rhstv, rhsip)| {
-                    (!lhs.needs_update(lhstv, lhsip, opts.downdate), &lhs.name).cmp(&(!rhs.needs_update(rhstv, rhsip, opts.downdate), &rhs.name))
-                }) {
+        for (package, package_target_version, package_install_prereleases) in packages
+            .iter()
+            .map(|p| {
+                let cfg = configuration.get(&p.name);
+                (
+                    p,
+                    cfg.as_ref().and_then(|c| c.target_version.as_ref()),
+                    cfg.as_ref().and_then(|c| c.install_prereleases),
+                )
+            })
+            .sorted_by(|&(ref lhs, lhstv, lhsip), &(ref rhs, rhstv, rhsip)| {
+                (!lhs.needs_update(lhstv, lhsip, opts.downdate), &lhs.name)
+                    .cmp(&(!rhs.needs_update(rhstv, rhsip, opts.downdate), &rhs.name))
+            })
+        {
             write!(out, "{}\t", package.name).unwrap();
 
             if let Some(ref v) = package.version {
@@ -173,14 +193,16 @@ fn actual_main() -> Result<(), i32> {
                 write!(out, "\tN/A").unwrap();
             }
 
-            writeln!(out,
-                     "\t{}",
-                     if package.needs_update(package_target_version, package_install_prereleases, opts.downdate) {
-                         "Yes"
-                     } else {
-                         "No"
-                     })
-                .unwrap();
+            writeln!(
+                out,
+                "\t{}",
+                if package.needs_update(package_target_version, package_install_prereleases, opts.downdate) {
+                    "Yes"
+                } else {
+                    "No"
+                }
+            )
+            .unwrap();
         }
         writeln!(out).unwrap();
         out.flush().unwrap();
@@ -194,9 +216,11 @@ fn actual_main() -> Result<(), i32> {
         if !opts.force {
             packages.retain(|p| {
                 let cfg = configuration.get(&p.name);
-                p.needs_update(cfg.as_ref().and_then(|c| c.target_version.as_ref()),
-                               cfg.as_ref().and_then(|c| c.install_prereleases),
-                               opts.downdate)
+                p.needs_update(
+                    cfg.as_ref().and_then(|c| c.target_version.as_ref()),
+                    cfg.as_ref().and_then(|c| c.install_prereleases),
+                    opts.downdate,
+                )
             });
         }
 
@@ -315,7 +339,9 @@ fn actual_main() -> Result<(), i32> {
         let mut packages = installed_git_packages;
 
         if !opts.filter.is_empty() {
-            packages.retain(|p| configuration.get(&p.name).map(|p_cfg| opts.filter.iter().all(|f| f.matches(p_cfg))).unwrap_or(false));
+            packages.retain(|p| {
+                configuration.get(&p.name).map(|p_cfg| opts.filter.iter().all(|f| f.matches(p_cfg))).unwrap_or(false)
+            });
         }
         if !opts.all {
             packages.retain(|p| opts.to_update.iter().any(|u| p.name == u.0));
@@ -323,24 +349,30 @@ fn actual_main() -> Result<(), i32> {
 
         let git_db_dir = crates_file.with_file_name("git").join("db");
         for package in &mut packages {
-            package.pull_version(&opts.temp_dir.1,
-                                 &git_db_dir,
-                                 http_proxy.as_ref().map(String::as_str),
-                                 cargo_config.net_git_fetch_with_cli);
+            package.pull_version(
+                &opts.temp_dir.1,
+                &git_db_dir,
+                http_proxy.as_ref().map(String::as_str),
+                cargo_config.net_git_fetch_with_cli,
+            );
         }
 
         if !opts.quiet {
             let mut out = TabWriter::new(stdout());
             writeln!(out, "Package\tInstalled\tLatest\tNeeds update").unwrap();
-            for package in packages.iter()
-                .sorted_by(|lhs, rhs| (!lhs.needs_update(), &lhs.name).cmp(&(!rhs.needs_update(), &rhs.name))) {
-                writeln!(out,
-                         "{}\t{}\t{}\t{}",
-                         package.name,
-                         package.id,
-                         package.newest_id.as_ref().unwrap(),
-                         if package.needs_update() { "Yes" } else { "No" })
-                    .unwrap();
+            for package in packages
+                .iter()
+                .sorted_by(|lhs, rhs| (!lhs.needs_update(), &lhs.name).cmp(&(!rhs.needs_update(), &rhs.name)))
+            {
+                writeln!(
+                    out,
+                    "{}\t{}\t{}\t{}",
+                    package.name,
+                    package.id,
+                    package.newest_id.as_ref().unwrap(),
+                    if package.needs_update() { "Yes" } else { "No" }
+                )
+                .unwrap();
             }
             writeln!(out).unwrap();
             out.flush().unwrap();
@@ -352,7 +384,8 @@ fn actual_main() -> Result<(), i32> {
             }
 
             if !packages.is_empty() {
-                let (success, errored, result): (Vec<String>, Vec<String>, Option<i32>) = packages.into_iter()
+                let (success, errored, result): (Vec<String>, Vec<String>, Option<i32>) = packages
+                    .into_iter()
                     .map(|package| -> (String, Result<(), i32>) {
                         if !opts.quiet {
                             println!("Updating {} from {}", package.name, package.url);
@@ -363,30 +396,30 @@ fn actual_main() -> Result<(), i32> {
                         }
 
                         let install_res = if let Some(cfg) = configuration.get(&package.name) {
-                                let mut cmd = Command::new(&opts.install_cargo);
-                                cmd.args(cfg.cargo_args(package.executables).iter().map(AsRef::as_ref))
-                                    .args(if opts.quiet { Some("--quiet") } else { None })
-                                    .arg("--git")
-                                    .arg(&package.url)
-                                    .arg(&package.name);
-                                if let Some(ref b) = package.branch.as_ref() {
-                                    cmd.arg("--branch").arg(b);
-                                }
-                                cmd.args(&opts.cargo_install_args).status()
-                            } else {
-                                let mut cmd = Command::new(&opts.install_cargo);
-                                cmd.arg("install")
-                                    .arg("-f")
-                                    .args(if opts.quiet { Some("--quiet") } else { None })
-                                    .arg("--git")
-                                    .arg(&package.url)
-                                    .arg(&package.name);
-                                if let Some(ref b) = package.branch.as_ref() {
-                                    cmd.arg("--branch").arg(b);
-                                }
-                                cmd.args(&opts.cargo_install_args).status()
+                            let mut cmd = Command::new(&opts.install_cargo);
+                            cmd.args(cfg.cargo_args(package.executables).iter().map(AsRef::as_ref))
+                                .args(if opts.quiet { Some("--quiet") } else { None })
+                                .arg("--git")
+                                .arg(&package.url)
+                                .arg(&package.name);
+                            if let Some(ref b) = package.branch.as_ref() {
+                                cmd.arg("--branch").arg(b);
                             }
-                            .unwrap();
+                            cmd.args(&opts.cargo_install_args).status()
+                        } else {
+                            let mut cmd = Command::new(&opts.install_cargo);
+                            cmd.arg("install")
+                                .arg("-f")
+                                .args(if opts.quiet { Some("--quiet") } else { None })
+                                .arg("--git")
+                                .arg(&package.url)
+                                .arg(&package.name);
+                            if let Some(ref b) = package.branch.as_ref() {
+                                cmd.arg("--branch").arg(b);
+                            }
+                            cmd.args(&opts.cargo_install_args).status()
+                        }
+                        .unwrap();
 
                         if !opts.quiet {
                             println!();
@@ -445,13 +478,15 @@ fn actual_main() -> Result<(), i32> {
 
     if opts.update {
         if !opts.quiet {
-            print!("Overall updated {} package{}",
-                   success_global.len(),
-                   match success_global.len() {
-                       0 => "s",
-                       1 => ": ",
-                       _ => "s: ",
-                   });
+            print!(
+                "Overall updated {} package{}",
+                success_global.len(),
+                match success_global.len() {
+                    0 => "s",
+                    1 => ": ",
+                    _ => "s: ",
+                }
+            );
             for (i, e) in success_global.iter().enumerate() {
                 if i != 0 {
                     print!(", ");
@@ -462,13 +497,15 @@ fn actual_main() -> Result<(), i32> {
         }
 
         if !errored_global.is_empty() && result_global.is_some() {
-            eprint!("Overall failed to update {} package{}",
-                    errored_global.len(),
-                    match errored_global.len() {
-                        0 => "s",
-                        1 => ": ",
-                        _ => "s: ",
-                    });
+            eprint!(
+                "Overall failed to update {} package{}",
+                errored_global.len(),
+                match errored_global.len() {
+                    0 => "s",
+                    1 => ": ",
+                    _ => "s: ",
+                }
+            );
             for (i, e) in errored_global.iter().enumerate() {
                 if i != 0 {
                     eprint!(", ");
@@ -484,35 +521,33 @@ fn actual_main() -> Result<(), i32> {
     Ok(())
 }
 
-
 /// This way the past-current exec will be "replaced" and we'll get no dupes in .cargo.toml
-#[cfg(target_os="windows")]
+#[cfg(target_os = "windows")]
 fn save_cargo_update_exec<D: Display>(version: &D) {
     save_cargo_update_exec_impl(format!("exe-v{}", version));
 }
 
-#[cfg(target_os="windows")]
+#[cfg(target_os = "windows")]
 fn save_cargo_update_exec_impl(extension: String) {
     let cur_exe = env::current_exe().unwrap();
     fs::rename(&cur_exe, cur_exe.with_extension(extension)).unwrap();
     File::create(cur_exe).unwrap();
 }
 
-#[cfg(target_os="windows")]
+#[cfg(target_os = "windows")]
 fn restore_cargo_update_exec<D: Display>(version: &D) {
     restore_cargo_update_exec_impl(format!("exe-v{}", version))
 }
 
-#[cfg(target_os="windows")]
+#[cfg(target_os = "windows")]
 fn restore_cargo_update_exec_impl(extension: String) {
     let cur_exe = env::current_exe().unwrap();
     fs::remove_file(&cur_exe).unwrap();
     fs::rename(cur_exe.with_extension(extension), cur_exe).unwrap();
 }
 
-
-#[cfg(not(target_os="windows"))]
+#[cfg(not(target_os = "windows"))]
 fn save_cargo_update_exec<D: Display>(_: &D) {}
 
-#[cfg(not(target_os="windows"))]
+#[cfg(not(target_os = "windows"))]
 fn restore_cargo_update_exec<D: Display>(_: &D) {}

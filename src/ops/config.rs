@@ -7,7 +7,6 @@ use std::path::Path;
 use std::fs;
 use toml;
 
-
 /// A single operation to be executed upon configuration of a package.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ConfigOperation {
@@ -34,7 +33,6 @@ pub enum ConfigOperation {
     /// Always install latest package version.
     RemoveTargetVersion,
 }
-
 
 /// Compilation configuration for one crate.
 ///
@@ -73,7 +71,6 @@ pub struct PackageConfig {
     /// Versions to constrain to.
     pub target_version: Option<VersionReq>,
 }
-
 
 impl PackageConfig {
     /// Create a package config based on the default settings and modified according to the specified operations.
@@ -164,13 +161,7 @@ impl PackageConfig {
                 let x = x.as_ref();
 
                 res.push("--bin".into());
-                res.push(if x.ends_with(".exe") {
-                        &x[..x.len() - 4]
-                    } else {
-                        x
-                    }
-                    .to_string()
-                    .into());
+                res.push(if x.ends_with(".exe") { &x[..x.len() - 4] } else { x }.to_string().into());
             }
         }
         if let Some(true) = self.debug {

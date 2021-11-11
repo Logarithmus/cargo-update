@@ -5,7 +5,6 @@ use std::io::{Write, stdout};
 use tabwriter::TabWriter;
 use std::process::exit;
 
-
 fn main() {
     let result = actual_main().err().unwrap_or(0);
     exit(result);
@@ -16,9 +15,9 @@ fn actual_main() -> Result<(), i32> {
     let config_file = cargo_update::ops::resolve_crates_file(opts.crates_file.1).with_file_name(".install_config.toml");
 
     let mut configuration = cargo_update::ops::PackageConfig::read(&config_file).map_err(|(e, r)| {
-            eprintln!("Reading config: {}", e);
-            r
-        })?;
+        eprintln!("Reading config: {}", e);
+        r
+    })?;
     if !opts.ops.is_empty() {
         let mut changed = false;
         if let Some(ref mut cfg) = configuration.get_mut(&opts.package) {

@@ -11,7 +11,6 @@
 //! println!("{:#?}", opts);
 //! ```
 
-
 use self::super::ops::{PackageFilterElement, ConfigOperation};
 use semver::{VersionReq as SemverReq, Version as Semver};
 use clap::{self, AppSettings, SubCommand, App, Arg};
@@ -21,7 +20,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use dirs::home_dir;
 use std::{env, fs};
-
 
 /// Representation of the application's all configurable values.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -68,7 +66,6 @@ pub struct ConfigOptions {
     /// What to do to the config, or display with empty
     pub ops: Vec<ConfigOperation>,
 }
-
 
 impl Options {
     /// Parse `env`-wide command-line arguments into an `Options` instance
@@ -118,14 +115,12 @@ impl Options {
                     packages.unique_via(|l, r| l.0 == r.0)
                 }
                 (true, None) => vec![],
-                (false, None) => {
-                    clap::Error {
-                            message: "Need at least one PACKAGE without --all".to_string(),
-                            kind: clap::ErrorKind::MissingRequiredArgument,
-                            info: None,
-                        }
-                        .exit()
+                (false, None) => clap::Error {
+                    message: "Need at least one PACKAGE without --all".to_string(),
+                    kind: clap::ErrorKind::MissingRequiredArgument,
+                    info: None,
                 }
+                .exit(),
             },
             all: all,
             update: update,
@@ -134,11 +129,17 @@ impl Options {
             downdate: matches.is_present("downdate"),
             update_git: matches.is_present("git"),
             quiet: matches.is_present("quiet"),
-            filter: matches.values_of("filter").map(|pfs| pfs.flat_map(PackageFilterElement::parse).collect()).unwrap_or_else(|| vec![]),
+            filter: matches
+                .values_of("filter")
+                .map(|pfs| pfs.flat_map(PackageFilterElement::parse).collect())
+                .unwrap_or_else(|| vec![]),
             crates_file: match matches.value_of("cargo-dir") {
                 Some(dir) => (format!("{}/.crates.toml", dir), fs::canonicalize(dir).unwrap().join(".crates.toml")),
                 None => {
-                    match env::var("CARGO_INSTALL_ROOT").map_err(|_| ()).and_then(|ch| fs::canonicalize(ch).map_err(|_| ())) {
+                    match env::var("CARGO_INSTALL_ROOT")
+                        .map_err(|_| ())
+                        .and_then(|ch| fs::canonicalize(ch).map_err(|_| ()))
+                    {
                         Ok(ch) => ("$CARGO_INSTALL_ROOT/.crates.toml".to_string(), ch.join(".crates.toml")),
                         Err(()) => (format!("{}/.crates.toml", cdir.0), cdir.1.join(".crates.toml")),
                     }
@@ -152,16 +153,24 @@ impl Options {
                     ("$TEMP".to_string(), env::temp_dir())
                 };
 
-                (format!("{}{}cargo-update",
-                         temp_s,
-                         if temp_s.ends_with('/') || temp_s.ends_with('\\') {
-                             ""
-                         } else {
-                             "/"
-                         }),
-                 temp_pb.join("cargo-update"))
+                (
+                    format!(
+                        "{}{}cargo-update",
+                        temp_s,
+                        if temp_s.ends_with('/') || temp_s.ends_with('\\') {
+                            ""
+                        } else {
+                            "/"
+                        }
+                    ),
+                    temp_pb.join("cargo-update"),
+                )
             },
-            cargo_install_args: matches.values_of_os("cargo_install_opts").into_iter().flat_map(|cio| cio.map(OsStr::to_os_string)).collect(),
+            cargo_install_args: matches
+                .values_of_os("cargo_install_opts")
+                .into_iter()
+                .flat_map(|cio| cio.map(OsStr::to_os_string))
+                .collect(),
             install_cargo: matches.value_of_os("install-cargo").expect("has default").to_os_string(),
         }
     }
@@ -205,33 +214,61 @@ impl ConfigOptions {
             crates_file: match matches.value_of("cargo-dir") {
                 Some(dir) => (format!("{}/.crates.toml", dir), fs::canonicalize(dir).unwrap().join(".crates.toml")),
                 None => {
-                    match env::var("CARGO_INSTALL_ROOT").map_err(|_| ()).and_then(|ch| fs::canonicalize(ch).map_err(|_| ())) {
+                    match env::var("CARGO_INSTALL_ROOT")
+                        .map_err(|_| ())
+                        .and_then(|ch| fs::canonicalize(ch).map_err(|_| ()))
+                    {
                         Ok(ch) => ("$CARGO_INSTALL_ROOT/.crates.toml".to_string(), ch.join(".crates.toml")),
                         Err(()) => (format!("{}/.crates.toml", cdir.0), cdir.1.join(".crates.toml")),
                     }
                 }
             },
             package: matches.value_of("PACKAGE").unwrap().to_string(),
-            ops: matches.value_of("toolchain")
-                .map(|t| if t.is_empty() {
-                    ConfigOperation::RemoveToolchain
-                } else {
-                    ConfigOperation::SetToolchain(t.to_string())
+            ops: matches
+                .value_of("toolchain")
+                .map(|t| {
+                    if t.is_empty() {
+                        ConfigOperation::RemoveToolchain
+                    } else {
+                        ConfigOperation::SetToolchain(t.to_string())
+                    }
                 })
                 .into_iter()
-                .chain(matches.values_of("feature").into_iter().flatten().map(str::to_string).map(ConfigOperation::AddFeature))
-                .chain(matches.values_of("no-feature").into_iter().flatten().map(str::to_string).map(ConfigOperation::RemoveFeature))
-                .chain(matches.value_of("default-features").map(|d| ["1", "yes", "true"].contains(&d)).map(ConfigOperation::DefaultFeatures).into_iter())
+                .chain(
+                    matches
+                        .values_of("feature")
+                        .into_iter()
+                        .flatten()
+                        .map(str::to_string)
+                        .map(ConfigOperation::AddFeature),
+                )
+                .chain(
+                    matches
+                        .values_of("no-feature")
+                        .into_iter()
+                        .flatten()
+                        .map(str::to_string)
+                        .map(ConfigOperation::RemoveFeature),
+                )
+                .chain(
+                    matches
+                        .value_of("default-features")
+                        .map(|d| ["1", "yes", "true"].contains(&d))
+                        .map(ConfigOperation::DefaultFeatures)
+                        .into_iter(),
+                )
                 .chain(match (matches.is_present("debug"), matches.is_present("release")) {
                     (true, _) => Some(ConfigOperation::SetDebugMode(true)),
                     (_, true) => Some(ConfigOperation::SetDebugMode(false)),
                     _ => None,
                 })
-                .chain(match (matches.is_present("install-prereleases"), matches.is_present("no-install-prereleases")) {
-                    (true, _) => Some(ConfigOperation::SetInstallPrereleases(true)),
-                    (_, true) => Some(ConfigOperation::SetInstallPrereleases(false)),
-                    _ => None,
-                })
+                .chain(
+                    match (matches.is_present("install-prereleases"), matches.is_present("no-install-prereleases")) {
+                        (true, _) => Some(ConfigOperation::SetInstallPrereleases(true)),
+                        (_, true) => Some(ConfigOperation::SetInstallPrereleases(false)),
+                        _ => None,
+                    },
+                )
                 .chain(match (matches.is_present("enforce-lock"), matches.is_present("no-enforce-lock")) {
                     (true, _) => Some(ConfigOperation::SetEnforceLock(true)),
                     (_, true) => Some(ConfigOperation::SetEnforceLock(false)),
@@ -255,23 +292,22 @@ impl ConfigOptions {
 fn cargo_dir() -> (String, PathBuf) {
     match env::var("CARGO_HOME").map_err(|_| ()).and_then(|ch| fs::canonicalize(ch).map_err(|_| ())) {
         Ok(ch) => ("$CARGO_HOME".to_string(), ch),
-        Err(()) =>
-                match home_dir().and_then(|hd| hd.canonicalize().ok()) {
-                    Some(mut hd) => {
-                        hd.push(".cargo");
+        Err(()) => match home_dir().and_then(|hd| hd.canonicalize().ok()) {
+            Some(mut hd) => {
+                hd.push(".cargo");
 
-                        fs::create_dir_all(&hd).unwrap();
-                        ("$HOME/.cargo".to_string(), hd)
-                    }
-                    None => {
-                        clap::Error {
-                                message: "$CARGO_HOME and home directory invalid, please specify the cargo home directory with the -c option".to_string(),
-                                kind: clap::ErrorKind::MissingRequiredArgument,
-                                info: None,
-                            }
-                            .exit()
-                    }
-                },
+                fs::create_dir_all(&hd).unwrap();
+                ("$HOME/.cargo".to_string(), hd)
+            }
+            None => clap::Error {
+                message:
+                    "$CARGO_HOME and home directory invalid, please specify the cargo home directory with the -c option"
+                        .to_string(),
+                kind: clap::ErrorKind::MissingRequiredArgument,
+                info: None,
+            }
+            .exit(),
+        },
     }
 }
 
@@ -292,9 +328,13 @@ fn package_parse(s: String) -> Result<(String, Option<Semver>, String), String> 
     let registry_url = registry_url.unwrap_or_else(|| "https://github.com/rust-lang/crates.io-index".to_string());
 
     if let Some(idx) = s.find(':') {
-        Ok((s[0..idx].to_string(),
-            Some(Semver::parse(&s[idx + 1..]).map_err(|e| format!("Version {} provided for package {} invalid: {}", &s[idx + 1..], &s[0..idx], e))?),
-            registry_url))
+        Ok((
+            s[0..idx].to_string(),
+            Some(Semver::parse(&s[idx + 1..]).map_err(|e| {
+                format!("Version {} provided for package {} invalid: {}", &s[idx + 1..], &s[0..idx], e)
+            })?),
+            registry_url,
+        ))
     } else {
         Ok((s.to_string(), None, registry_url))
     }

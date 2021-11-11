@@ -5,8 +5,10 @@
 //! poll the packages' latest versions by calling `RegistryPackage::pull_version()` on them,
 //! continue with doing whatever you wish.
 
-
-use git2::{self, Config as GitConfig, Error as GitError, Cred as GitCred, RemoteCallbacks, CredentialType, FetchOptions, ProxyOptions, Repository, Tree, Oid};
+use git2::{
+    self, Config as GitConfig, Error as GitError, Cred as GitCred, RemoteCallbacks, CredentialType, FetchOptions,
+    ProxyOptions, Repository, Tree, Oid,
+};
 use semver::{VersionReq as SemverReq, Version as Semver};
 use std::io::{ErrorKind as IoErrorKind, Write, Read};
 use std::ffi::{OsString, OsStr};
@@ -26,12 +28,10 @@ mod config;
 
 pub use self::config::*;
 
-
 lazy_static! {
     static ref REGISTRY_RGX: Regex = Regex::new(r"([^\s]+) ([^\s]+) \(registry+\+([^\s]+)\)").unwrap();
     static ref GIT_PACKAGE_RGX: Regex = Regex::new(r"([^\s]+) ([^\s]+) \(git+\+([^#\s]+)#([^\s]{40})\)").unwrap();
 }
-
 
 /// A representation of a package from the main [`crates.io`](https://crates.io) repository.
 ///
@@ -143,7 +143,6 @@ pub struct GitRepoPackage {
     pub executables: Vec<String>,
 }
 
-
 impl RegistryPackage {
     /// Try to decypher a package descriptor into a `RegistryPackage`.
     ///
@@ -197,24 +196,26 @@ impl RegistryPackage {
     /// assert!(RegistryPackage::parse(package_s, vec!["treesize".to_string()]).is_none());
     /// ```
     pub fn parse(what: &str, executables: Vec<String>) -> Option<RegistryPackage> {
-        REGISTRY_RGX.captures(what).map(|c| {
-            RegistryPackage {
-                name: c.get(1).unwrap().as_str().to_string(),
-                registry: c.get(3).unwrap().as_str().to_string(),
-                version: Some(Semver::parse(c.get(2).unwrap().as_str()).unwrap()),
-                newest_version: None,
-                alternative_version: None,
-                max_version: None,
-                executables: executables,
-            }
+        REGISTRY_RGX.captures(what).map(|c| RegistryPackage {
+            name: c.get(1).unwrap().as_str().to_string(),
+            registry: c.get(3).unwrap().as_str().to_string(),
+            version: Some(Semver::parse(c.get(2).unwrap().as_str()).unwrap()),
+            newest_version: None,
+            alternative_version: None,
+            max_version: None,
+            executables: executables,
         })
     }
 
     /// Download the version list for this crate off the specified repository tree and set the latest and alternative versions.
-    pub fn pull_version<'t>(&mut self, registry: &Tree<'t>, registry_parent: &'t Repository, install_prereleases: Option<bool>) {
-        let mut vers =
-            crate_versions(&mut &find_package_data(&self.name, registry, registry_parent).ok_or_else(|| format!("package {} not found", self.name)).unwrap()
-                                     [..]);
+    pub fn pull_version<'t>(
+        &mut self, registry: &Tree<'t>, registry_parent: &'t Repository, install_prereleases: Option<bool>,
+    ) {
+        let mut vers = crate_versions(
+            &mut &find_package_data(&self.name, registry, registry_parent)
+                .ok_or_else(|| format!("package {} not found", self.name))
+                .unwrap()[..],
+        );
         vers.sort();
 
         self.newest_version = None;
@@ -350,13 +351,14 @@ impl RegistryPackage {
 
         let update_to_version = self.update_to_version();
 
-        (req.into_iter().zip(self.version.as_ref()).map(|(sr, cv)| !sr.matches(cv)).next().unwrap_or(true) ||
-         req.into_iter().zip(update_to_version).map(|(sr, uv)| sr.matches(uv)).next().unwrap_or(true)) &&
-        update_to_version.map(|upd_v| {
-                (!upd_v.is_prerelease() || install_prereleases.unwrap_or(false)) &&
-                (self.version.is_none() || criterion(self.version.as_ref().unwrap(), upd_v, downdate))
-            })
-            .unwrap_or(false)
+        (req.into_iter().zip(self.version.as_ref()).map(|(sr, cv)| !sr.matches(cv)).next().unwrap_or(true)
+            || req.into_iter().zip(update_to_version).map(|(sr, uv)| sr.matches(uv)).next().unwrap_or(true))
+            && update_to_version
+                .map(|upd_v| {
+                    (!upd_v.is_prerelease() || install_prereleases.unwrap_or(false))
+                        && (self.version.is_none() || criterion(self.version.as_ref().unwrap(), upd_v, downdate))
+                })
+                .unwrap_or(false)
     }
 
     /// Get package version to update to, or `None` if the crate has no newest version (was yanked)
@@ -467,7 +469,9 @@ impl GitRepoPackage {
     }
 
     /// Clone the repo and check what the latest commit's hash is.
-    pub fn pull_version<Pt: AsRef<Path>, Pg: AsRef<Path>>(&mut self, temp_dir: Pt, git_db_dir: Pg, http_proxy: Option<&str>, fork_git: bool) {
+    pub fn pull_version<Pt: AsRef<Path>, Pg: AsRef<Path>>(
+        &mut self, temp_dir: Pt, git_db_dir: Pg, http_proxy: Option<&str>, fork_git: bool,
+    ) {
         self.pull_version_impl(temp_dir.as_ref(), git_db_dir.as_ref(), http_proxy, fork_git)
     }
 
@@ -479,10 +483,17 @@ impl GitRepoPackage {
 
         let repo = self.pull_version_repo(&clone_dir, http_proxy, fork_git);
 
-        self.newest_id = Some(repo.and_then(|r| r.head().and_then(|h| h.target().ok_or_else(|| GitError::from_str("HEAD not a direct reference")))).unwrap());
+        self.newest_id = Some(
+            repo.and_then(|r| {
+                r.head().and_then(|h| h.target().ok_or_else(|| GitError::from_str("HEAD not a direct reference")))
+            })
+            .unwrap(),
+        );
     }
 
-    fn pull_version_fresh_clone(&self, clone_dir: &Path, http_proxy: Option<&str>, fork_git: bool) -> Result<Repository, GitError> {
+    fn pull_version_fresh_clone(
+        &self, clone_dir: &Path, http_proxy: Option<&str>, fork_git: bool,
+    ) -> Result<Repository, GitError> {
         if fork_git {
             Command::new(env::var_os("GIT").as_ref().map(OsString::as_os_str).unwrap_or(OsStr::new("git")))
                 .arg("clone")
@@ -492,10 +503,12 @@ impl GitRepoPackage {
                 .arg(clone_dir)
                 .status()
                 .map_err(|e| GitError::from_str(&e.to_string()))
-                .and_then(|e| if e.success() {
-                    Repository::open(clone_dir)
-                } else {
-                    Err(GitError::from_str(&e.to_string()))
+                .and_then(|e| {
+                    if e.success() {
+                        Repository::open(clone_dir)
+                    } else {
+                        Err(GitError::from_str(&e.to_string()))
+                    }
                 })
         } else {
             with_authentication(&self.url, |creds| {
@@ -514,7 +527,9 @@ impl GitRepoPackage {
         }
     }
 
-    fn pull_version_repo(&self, clone_dir: &Path, http_proxy: Option<&str>, fork_git: bool) -> Result<Repository, GitError> {
+    fn pull_version_repo(
+        &self, clone_dir: &Path, http_proxy: Option<&str>, fork_git: bool,
+    ) -> Result<Repository, GitError> {
         if let Ok(r) = Repository::open(clone_dir) {
             // If `Repository::open` is successful, both `clone_dir` exists *and* points to a valid repository.
             //
@@ -524,15 +539,19 @@ impl GitRepoPackage {
                 Some(b) => {
                     // Cargo doesn't point the HEAD at the chosen (via "--branch") branch when installing
                     // https://github.com/nabijaczleweli/cargo-update/issues/143
-                    r.set_head(&format!("refs/heads/{}", b)).map_err(|e| panic!("Couldn't set HEAD to chosen branch {}: {}", b, e)).unwrap();
+                    r.set_head(&format!("refs/heads/{}", b))
+                        .map_err(|e| panic!("Couldn't set HEAD to chosen branch {}: {}", b, e))
+                        .unwrap();
                     Cow::from(b)
                 }
 
                 None => {
-                    match r.find_reference("HEAD")
+                    match r
+                        .find_reference("HEAD")
                         .map_err(|e| panic!("No HEAD in {}: {}", clone_dir.display(), e))
                         .unwrap()
-                        .symbolic_target() {
+                        .symbolic_target()
+                    {
                         Some(ht) => ht["refs/heads/".len()..].to_string().into(),
                         None => {
                             // Versions up to v4.0.0 (well, 59be1c0de283dabce320a860a3d533d00910a6a9, but who's counting)
@@ -545,7 +564,6 @@ impl GitRepoPackage {
                             return self.pull_version_fresh_clone(clone_dir, http_proxy, fork_git);
                         }
                     }
-
                 }
             };
 
@@ -555,40 +573,48 @@ impl GitRepoPackage {
                     remote = &self.url;
                     r.remote_anonymous(&self.url)
                 })
-                .and_then(|mut rm| if fork_git {
-                    Command::new(env::var_os("GIT").as_ref().map(OsString::as_os_str).unwrap_or(OsStr::new("git")))
-                        .arg("-C")
-                        .arg(r.path())
-                        .args(&["fetch", remote, &branch])
-                        .status()
-                        .map_err(|e| GitError::from_str(&e.to_string()))
-                        .and_then(|e| if e.success() {
-                            Ok(())
-                        } else {
-                            Err(GitError::from_str(&e.to_string()))
-                        })
-                } else {
-                    with_authentication(&self.url, |creds| {
-                        let mut cb = RemoteCallbacks::new();
-                        cb.credentials(|a, b, c| creds(a, b, c));
+                .and_then(|mut rm| {
+                    if fork_git {
+                        Command::new(env::var_os("GIT").as_ref().map(OsString::as_os_str).unwrap_or(OsStr::new("git")))
+                            .arg("-C")
+                            .arg(r.path())
+                            .args(&["fetch", remote, &branch])
+                            .status()
+                            .map_err(|e| GitError::from_str(&e.to_string()))
+                            .and_then(|e| {
+                                if e.success() {
+                                    Ok(())
+                                } else {
+                                    Err(GitError::from_str(&e.to_string()))
+                                }
+                            })
+                    } else {
+                        with_authentication(&self.url, |creds| {
+                            let mut cb = RemoteCallbacks::new();
+                            cb.credentials(|a, b, c| creds(a, b, c));
 
-                        rm.fetch(&[&branch[..]],
-                                 Some(&mut fetch_options_from_proxy_url_and_callbacks(&self.url, http_proxy, cb)),
-                                 None)
-                    })
+                            rm.fetch(
+                                &[&branch[..]],
+                                Some(&mut fetch_options_from_proxy_url_and_callbacks(&self.url, http_proxy, cb)),
+                                None,
+                            )
+                        })
+                    }
                 })
                 .map_err(|e| panic!("Fetching {} from {}: {}", clone_dir.display(), self.url, e))
                 .unwrap();
-            r.branch(&branch,
-                        &r.find_reference("FETCH_HEAD")
-                            .map_err(|e| panic!("No FETCH_HEAD in {}: {}", clone_dir.display(), e))
-                            .unwrap()
-                            .peel_to_commit()
-                            .map_err(|e| panic!("FETCH_HEAD not a commit in {}: {}", clone_dir.display(), e))
-                            .unwrap(),
-                        true)
-                .map_err(|e| panic!("Setting local branch {} in {}: {}", branch, clone_dir.display(), e))
-                .unwrap();
+            r.branch(
+                &branch,
+                &r.find_reference("FETCH_HEAD")
+                    .map_err(|e| panic!("No FETCH_HEAD in {}: {}", clone_dir.display(), e))
+                    .unwrap()
+                    .peel_to_commit()
+                    .map_err(|e| panic!("FETCH_HEAD not a commit in {}: {}", clone_dir.display(), e))
+                    .unwrap(),
+                true,
+            )
+            .map_err(|e| panic!("Setting local branch {} in {}: {}", branch, clone_dir.display(), e))
+            .unwrap();
             Ok(r)
         } else {
             // If we could not open the repository either it does not exist, or exists but is invalid,
@@ -633,7 +659,6 @@ impl GitRepoPackage {
     }
 }
 
-
 /// One of elements with which to filter required packages.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PackageFilterElement {
@@ -657,7 +682,10 @@ impl PackageFilterElement {
     /// assert!(PackageFilterElement::parse("communism=good").is_err());
     /// ```
     pub fn parse(from: &str) -> Result<PackageFilterElement, String> {
-        let (key, value) = from.split_at(from.find('=').ok_or_else(|| format!(r#"Filter string "{}" does not contain the key/value separator "=""#, from))?);
+        let (key, value) = from.split_at(
+            from.find('=')
+                .ok_or_else(|| format!(r#"Filter string "{}" does not contain the key/value separator "=""#, from))?,
+        );
         let value = &value[1..];
 
         Ok(match key {
@@ -684,7 +712,6 @@ impl PackageFilterElement {
     }
 }
 
-
 /// `cargo` configuration, as obtained from `.cargo/config[.toml]`
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CargoConfig {
@@ -696,10 +723,12 @@ impl CargoConfig {
         CargoConfig {
             net_git_fetch_with_cli: env::var("CARGO_NET_GIT_FETCH_WITH_CLI")
                 .ok()
-                .and_then(|e| if e.is_empty() {
-                    Some(toml::Value::String(String::new()))
-                } else {
-                    e.parse::<toml::Value>().ok()
+                .and_then(|e| {
+                    if e.is_empty() {
+                        Some(toml::Value::String(String::new()))
+                    } else {
+                        e.parse::<toml::Value>().ok()
+                    }
                 })
                 .or_else(|| {
                     fs::read_to_string(crates_file.with_file_name("config"))
@@ -721,13 +750,11 @@ impl CargoConfig {
         match v {
             toml::Value::String(ref s) if s == "" => false,
             toml::Value::Float(f) if f == 0. => false,
-            toml::Value::Integer(0) |
-            toml::Value::Boolean(false) => false,
+            toml::Value::Integer(0) | toml::Value::Boolean(false) => false,
             _ => true,
         }
     }
 }
-
 
 /// [Follow `install.root`](https://github.com/nabijaczleweli/cargo-update/issues/23) in the `config` file
 /// parallel to the specified crates file up to the final one.
@@ -752,7 +779,8 @@ pub fn resolve_crates_file(crates_file: PathBuf) -> PathBuf {
             .get("install")
             .and_then(|t| t.as_table())
             .and_then(|t| t.get("root"))
-            .and_then(|t| t.as_str()) {
+            .and_then(|t| t.as_str())
+        {
             return resolve_crates_file(Path::new(idir).join(".crates.toml"));
         }
     }
@@ -787,7 +815,10 @@ pub fn installed_registry_packages(crates_file: &Path) -> Vec<RegistryPackage> {
             .unwrap()
             .iter()
             .flat_map(|(s, x)| x.as_array().map(|x| (s, x)))
-            .flat_map(|(s, x)| RegistryPackage::parse(s, x.iter().flat_map(toml::Value::as_str).map(str::to_string).collect())) {
+            .flat_map(|(s, x)| {
+                RegistryPackage::parse(s, x.iter().flat_map(toml::Value::as_str).map(str::to_string).collect())
+            })
+        {
             if let Some(saved) = res.iter_mut().find(|p| p.name == pkg.name) {
                 if saved.version.is_none() || saved.version.as_ref().unwrap() < pkg.version.as_ref().unwrap() {
                     saved.version = pkg.version;
@@ -829,7 +860,10 @@ pub fn installed_git_repo_packages(crates_file: &Path) -> Vec<GitRepoPackage> {
             .unwrap()
             .iter()
             .flat_map(|(s, x)| x.as_array().map(|x| (s, x)))
-            .flat_map(|(s, x)| GitRepoPackage::parse(s, x.iter().flat_map(toml::Value::as_str).map(str::to_string).collect())) {
+            .flat_map(|(s, x)| {
+                GitRepoPackage::parse(s, x.iter().flat_map(toml::Value::as_str).map(str::to_string).collect())
+            })
+        {
             if let Some(saved) = res.iter_mut().find(|p| p.name == pkg.name) {
                 saved.id = pkg.id;
                 continue;
@@ -873,17 +907,27 @@ pub fn installed_git_repo_packages(crates_file: &Path) -> Vec<GitRepoPackage> {
 /// #     RegistryPackage::parse("racer 1.2.10 (registry+https://github.com/rust-lang/crates.io-index)",
 /// #                            vec!["racer.exe".to_string()]).unwrap()]);
 /// ```
-pub fn intersect_packages(installed: &[RegistryPackage], to_update: &[(String, Option<Semver>, String)], allow_installs: bool,
-                          installed_git: &[GitRepoPackage])
-                          -> Vec<RegistryPackage> {
-    installed.iter()
+pub fn intersect_packages(
+    installed: &[RegistryPackage], to_update: &[(String, Option<Semver>, String)], allow_installs: bool,
+    installed_git: &[GitRepoPackage],
+) -> Vec<RegistryPackage> {
+    installed
+        .iter()
         .filter(|p| to_update.iter().any(|u| p.name == u.0))
         .cloned()
-        .map(|p| RegistryPackage { max_version: to_update.iter().find(|u| p.name == u.0).and_then(|u| u.1.clone()), ..p })
-        .chain(to_update.iter()
-            .filter(|p| allow_installs && installed.iter().find(|i| i.name == p.0).is_none() && installed_git.iter().find(|i| i.name == p.0).is_none())
-            .map(|p| {
-                RegistryPackage {
+        .map(|p| RegistryPackage {
+            max_version: to_update.iter().find(|u| p.name == u.0).and_then(|u| u.1.clone()),
+            ..p
+        })
+        .chain(
+            to_update
+                .iter()
+                .filter(|p| {
+                    allow_installs
+                        && installed.iter().find(|i| i.name == p.0).is_none()
+                        && installed_git.iter().find(|i| i.name == p.0).is_none()
+                })
+                .map(|p| RegistryPackage {
                     name: p.0.clone(),
                     registry: p.2.clone(),
                     version: None,
@@ -891,8 +935,8 @@ pub fn intersect_packages(installed: &[RegistryPackage], to_update: &[(String, O
                     alternative_version: None,
                     max_version: p.1.clone(),
                     executables: vec![],
-                }
-            }))
+                }),
+        )
         .collect()
 }
 
@@ -953,7 +997,9 @@ pub fn assert_index_path(cargo_dir: &Path, registry_url: &str) -> Result<PathBuf
             }
         }
         Err(ref e) if e.kind() == IoErrorKind::NotFound => {
-            fs::create_dir_all(&path).map_err(|e| format!("Couldn't create {} (index directory for {}): {}", path.display(), registry_url, e))?;
+            fs::create_dir_all(&path).map_err(|e| {
+                format!("Couldn't create {} (index directory for {}): {}", path.display(), registry_url, e)
+            })?;
             Ok(path)
         }
         Err(e) => Err(format!("Couldn't read {} (index directory for {}): {}", path.display(), registry_url, e).into()),
@@ -1002,29 +1048,32 @@ pub fn assert_index_path(cargo_dir: &Path, registry_url: &str) -> Result<PathBuf
 ///
 /// Sometimes, however, even this isn't enough (see https://github.com/nabijaczleweli/cargo-update/issues/163),
 /// hence `fork_git`, which actually runs `$GIT` (default: `git`).
-pub fn update_index<W: Write>(index_repo: &mut Repository, repo_url: &str, http_proxy: Option<&str>, fork_git: bool, out: &mut W) -> Result<(), String> {
-    writeln!(out, "    Updating registry '{}'", repo_url).map_err(|_| "failed to write updating message".to_string())?;
+pub fn update_index<W: Write>(
+    index_repo: &mut Repository, repo_url: &str, http_proxy: Option<&str>, fork_git: bool, out: &mut W,
+) -> Result<(), String> {
+    writeln!(out, "    Updating registry '{}'", repo_url)
+        .map_err(|_| "failed to write updating message".to_string())?;
     if fork_git {
-        Command::new(env::var_os("GIT").as_ref().map(OsString::as_os_str).unwrap_or(OsStr::new("git"))).arg("-C")
+        Command::new(env::var_os("GIT").as_ref().map(OsString::as_os_str).unwrap_or(OsStr::new("git")))
+            .arg("-C")
             .arg(index_repo.path())
             .args(&["fetch", "-f", repo_url, "refs/heads/master:refs/remotes/origin/master"])
             .status()
             .map_err(|e| e.to_string())
-            .and_then(|e| if e.success() {
-                Ok(())
-            } else {
-                Err(e.to_string())
-            })?;
+            .and_then(|e| if e.success() { Ok(()) } else { Err(e.to_string()) })?;
     } else {
-        index_repo.remote_anonymous(repo_url)
+        index_repo
+            .remote_anonymous(repo_url)
             .and_then(|mut r| {
                 with_authentication(repo_url, |creds| {
                     let mut cb = RemoteCallbacks::new();
                     cb.credentials(|a, b, c| creds(a, b, c));
 
-                    r.fetch(&["refs/heads/master:refs/remotes/origin/master"],
-                            Some(&mut fetch_options_from_proxy_url_and_callbacks(repo_url, http_proxy, cb)),
-                            None)
+                    r.fetch(
+                        &["refs/heads/master:refs/remotes/origin/master"],
+                        Some(&mut fetch_options_from_proxy_url_and_callbacks(repo_url, http_proxy, cb)),
+                        None,
+                    )
                 })
             })
             .map_err(|e| e.message().to_string())?;
@@ -1034,7 +1083,9 @@ pub fn update_index<W: Write>(index_repo: &mut Repository, repo_url: &str, http_
     Ok(())
 }
 
-fn fetch_options_from_proxy_url_and_callbacks<'a>(repo_url: &str, proxy_url: Option<&str>, callbacks: RemoteCallbacks<'a>) -> FetchOptions<'a> {
+fn fetch_options_from_proxy_url_and_callbacks<'a>(
+    repo_url: &str, proxy_url: Option<&str>, callbacks: RemoteCallbacks<'a>,
+) -> FetchOptions<'a> {
     let mut ret = FetchOptions::new();
     if let Some(proxy_url) = proxy_url {
         ret.proxy_options({
@@ -1083,11 +1134,13 @@ pub fn get_index_url(crates_file: &Path, registry: &str) -> Result<(String, Cow<
         if registry == "https://github.com/rust-lang/crates.io-index" {
             return Ok((registry.to_string(), "crates-io".into()));
         } else {
-            Err(format!("Non-crates.io registry specified and no config file found at {} or {}. \
+            Err(format!(
+                "Non-crates.io registry specified and no config file found at {} or {}. \
                          Due to a Cargo limitation we will not be able to install from there \
                          until it's given a [source.NAME] in that file!",
-                        config_file.with_file_name("config").display(),
-                        config_file.display()))?
+                config_file.with_file_name("config").display(),
+                config_file.display()
+            ))?
         }
     };
 
@@ -1141,11 +1194,13 @@ pub fn get_index_url(crates_file: &Path, registry: &str) -> Result<(String, Cow<
             })
     }
     if Url::parse(&cur_source).is_ok() {
-        Err(format!("Non-crates.io registry specified and {} couldn't be found in the config file at {}. \
+        Err(format!(
+            "Non-crates.io registry specified and {} couldn't be found in the config file at {}. \
                      Due to a Cargo limitation we will not be able to install from there \
                      until it's given a [source.NAME] in that file!",
-                    cur_source,
-                    config_file.display()))?
+            cur_source,
+            config_file.display()
+        ))?
     }
 
     while let Some(repl) = replacements.get(&cur_source[..]) {
@@ -1153,11 +1208,13 @@ pub fn get_index_url(crates_file: &Path, registry: &str) -> Result<(String, Cow<
     }
 
     registries.get(&cur_source[..]).map(|reg| (reg.to_string(), cur_source.to_string().into())).ok_or_else(|| {
-        format!("Couldn't find appropriate source URL for {} in {} (resolved to {:?})",
-                registry,
-                config_file.display(),
-                cur_source)
-            .into()
+        format!(
+            "Couldn't find appropriate source URL for {} in {} (resolved to {:?})",
+            registry,
+            config_file.display(),
+            cur_source
+        )
+        .into()
     })
 }
 
@@ -1169,7 +1226,8 @@ pub fn get_index_url(crates_file: &Path, registry: &str) -> Result<(String, Cow<
 /// https://github.com/rust-lang/cargo/blob/5102de2b7de997b03181063417f20874a06a67c0/src/cargo/sources/git/utils.rs#L437
 /// (see that link for full comments)
 fn with_authentication<T, F>(url: &str, mut f: F) -> Result<T, GitError>
-    where F: FnMut(&mut git2::Credentials) -> Result<T, GitError>
+where
+    F: FnMut(&mut git2::Credentials) -> Result<T, GitError>,
 {
     let cfg = GitConfig::open_default().unwrap();
 
@@ -1210,11 +1268,13 @@ fn with_authentication<T, F>(url: &str, mut f: F) -> Result<T, GitError>
     if ssh_username_requested {
         // NOTE: this is the only divergence from the original cargo code: we also try cfg["user.name"]
         //       see https://github.com/nabijaczleweli/cargo-update/issues/110#issuecomment-533091965 for explanation
-        for uname in cred_helper.username
+        for uname in cred_helper
+            .username
             .into_iter()
             .chain(cfg.get_string("user.name"))
             .chain(["USERNAME", "USER"].iter().flat_map(env::var))
-            .chain(Some("git").into_iter().map(str::to_string)) {
+            .chain(Some("git").into_iter().map(str::to_string))
+        {
             let mut ssh_attempts = 0;
 
             res = f(&mut |_, _, allowed| {
@@ -1268,7 +1328,6 @@ fn with_authentication<T, F>(url: &str, mut f: F) -> Result<T, GitError>
         Err(GitError::from_str(&msg)).unwrap()
     }
 }
-
 
 /// Find package data in the specified cargo index tree.
 pub fn find_package_data<'t>(cratename: &str, registry: &Tree<'t>, registry_parent: &'t Repository) -> Option<Vec<u8>> {
@@ -1333,7 +1392,8 @@ pub fn find_proxy(crates_file: &Path) -> Option<String> {
             .get("http")
             .and_then(|t| t.as_table())
             .and_then(|t| t.get("proxy"))
-            .and_then(|t| t.as_str()) {
+            .and_then(|t| t.as_str())
+        {
             if !proxy.is_empty() {
                 return Some(proxy.to_string());
             }
@@ -1348,7 +1408,11 @@ pub fn find_proxy(crates_file: &Path) -> Option<String> {
         }
     }
 
-    ["http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY"].iter().flat_map(env::var).filter(|proxy| !proxy.is_empty()).next()
+    ["http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY"]
+        .iter()
+        .flat_map(env::var)
+        .filter(|proxy| !proxy.is_empty())
+        .next()
 }
 
 /// Find the bare git repository in the specified directory for the specified crate
@@ -1359,20 +1423,21 @@ pub fn find_proxy(crates_file: &Path) -> Option<String> {
 /// [`{last_url_segment || "_empty"}-{hash(url)}`]
 /// (https://github.com/rust-lang/cargo/blob/74f2b400d2be43da798f99f94957d359bc223988/src/cargo/sources/git/source.rs#L62-L73)
 pub fn find_git_db_repo(git_db_dir: &Path, url: &str) -> Option<PathBuf> {
-    let path = git_db_dir.join(format!("{}-{}",
-                                       match Url::parse(url)
-                                           .ok()?
-                                           .path_segments()
-                                           .and_then(|segs| segs.rev().next())
-                                           .unwrap_or("") {
-                                           "" => "_empty",
-                                           url => url,
-                                       },
-                                       cargo_hash(url)));
+    let path = git_db_dir.join(format!(
+        "{}-{}",
+        match Url::parse(url).ok()?.path_segments().and_then(|segs| segs.rev().next()).unwrap_or("") {
+            "" => "_empty",
+            url => url,
+        },
+        cargo_hash(url)
+    ));
 
-    if path.is_dir() { Some(path) } else { None }
+    if path.is_dir() {
+        Some(path)
+    } else {
+        None
+    }
 }
-
 
 /// The short filesystem name for the repository, as used by `cargo`
 ///
@@ -1391,9 +1456,11 @@ pub fn registry_shortname(url: &str) -> String {
         }
     }
 
-    format!("{}-{}",
-            Url::parse(url).map_err(|e| format!("{} not an URL: {}", url, e)).unwrap().host_str().unwrap_or(""),
-            cargo_hash(RegistryHash(url)))
+    format!(
+        "{}-{}",
+        Url::parse(url).map_err(|e| format!("{} not an URL: {}", url, e)).unwrap().host_str().unwrap_or(""),
+        cargo_hash(RegistryHash(url))
+    )
 }
 
 /// Stolen from and equivalent to `short_hash()` from
@@ -1405,14 +1472,16 @@ pub fn cargo_hash<T: Hash>(whom: T) -> String {
     let mut hasher = SipHasher::new_with_keys(0, 0);
     whom.hash(&mut hasher);
     let hash = hasher.finish();
-    hex::encode(&[(hash >> 0) as u8,
-                  (hash >> 8) as u8,
-                  (hash >> 16) as u8,
-                  (hash >> 24) as u8,
-                  (hash >> 32) as u8,
-                  (hash >> 40) as u8,
-                  (hash >> 48) as u8,
-                  (hash >> 56) as u8])
+    hex::encode(&[
+        (hash >> 0) as u8,
+        (hash >> 8) as u8,
+        (hash >> 16) as u8,
+        (hash >> 24) as u8,
+        (hash >> 32) as u8,
+        (hash >> 40) as u8,
+        (hash >> 48) as u8,
+        (hash >> 56) as u8,
+    ])
 }
 
 /// These two are stolen verbatim from
